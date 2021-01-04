@@ -7,6 +7,7 @@ aws_profile_name = 'prod-aws' #change it according to your aws profile name (thi
 
 total_functions_processed = 0
 total_code_space_saved = 0
+stages_to_exclude = ["live", "prod"]
 
 def clean_old_lambda_versions():
     global total_functions_processed
@@ -26,6 +27,12 @@ def clean_old_lambda_versions():
             aliases = client.list_aliases(FunctionName=function['FunctionArn'])
             alias_versions = [alias['FunctionVersion'] for alias in aliases['Aliases']]
             remaining_versions_to_delete = 0
+            stage = None
+
+            tagsResponse = client.list_tags(Resource=function['FunctionArn']) #list_tags does not support versions
+
+            if 'Tags' in tagsResponse and 'STAGE' in tagsResponse['Tags']:
+                stage = tagsResponse['Tags']['STAGE']
 
             for version_page in version_paginator.paginate(FunctionName=function['FunctionArn']):
                 remaining_versions_to_delete += (len(version_page['Versions']))
@@ -34,13 +41,13 @@ def clean_old_lambda_versions():
                     code_size = version['CodeSize']
                     isAliased = bool(version['Version'] in alias_versions)
 
-                    if version['Version'] != function['Version'] and not isAliased and remaining_versions_to_delete > lambda_versions_to_keep:
-                        print('delete_function(FunctionName={}) isAliased={}'.format(arn, isAliased))
+                    if version['Version'] != function['Version'] and not isAliased and remaining_versions_to_delete > lambda_versions_to_keep and stage not in stages_to_exclude:
+                        print('delete_function(FunctionName={}) isAliased={} stage={}'.format(arn, isAliased, stage))
                         
                         total_code_space_saved += code_size
                         #client.delete_function(FunctionName=arn)  # uncomment me once you've checked
                     else:
-                        print('keep_function(FunctionName={}) isAliased={}'.format(arn, isAliased))
+                        print('keep_function(FunctionName={}) isAliased={}  stage={}'.format(arn, isAliased, stage))
 
                     remaining_versions_to_delete -= 1
             print("\n")
